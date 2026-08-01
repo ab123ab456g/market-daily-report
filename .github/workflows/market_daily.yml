@@ -1,1 +1,61 @@
+name: Daily market MA120 email report
 
+on:
+  workflow_dispatch:
+  schedule:
+    # UTC 22:30 = Asia/Taipei 06:30 next day.
+    # Daily execution also captures the US Friday close on Saturday morning.
+    - cron: "30 22 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-market-report
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Collect market data and send email
+        id: collect
+        continue-on-error: true
+        env:
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
+          EMAIL_TO: ${{ vars.EMAIL_TO }}
+          EMAIL_ENABLED: "true"
+          EMAIL_SEND_ONLY_WHEN_NEW: "true"
+        run: python market_daily.py
+
+      - name: Commit updated reports
+        if: always()
+        run: |
+          if git diff --quiet -- data/; then
+            echo "No report changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git commit -m "data: update daily market report"
+          git push
+
+      - name: Mark workflow failed when collector failed
+        if: steps.collect.outcome == 'failure'
+        run: exit 1

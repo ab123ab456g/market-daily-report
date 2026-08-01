@@ -54,7 +54,7 @@ jobs:
           EMAIL_ENABLED: "true"
 
           # 第一次測試設 false，確保即使資料重複也會寄信
-          EMAIL_SEND_ONLY_WHEN_NEW: "false"
+          EMAIL_SEND_ONLY_WHEN_NEW: "true"
 
           TZ: Asia/Taipei
 

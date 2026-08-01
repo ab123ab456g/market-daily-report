@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Daily index collector and email reporter.
+"""Daily index collector and Gmail email reporter.
 
 Fetches S&P 500, NASDAQ Composite, and Taiwan Weighted Index data in parallel,
 calculates the 120-trading-day moving average, writes CSV/JSON/text reports,
-and optionally emails the report through Gmail SMTP.
+and sends the latest report through Gmail SMTP.
 
-Designed for Python 3.10+ and a daily scheduler such as GitHub Actions or
-PythonAnywhere Scheduled Tasks.
+Designed for Python 3.10+ and GitHub Actions.
 """
 
 from __future__ import annotations
@@ -37,21 +36,12 @@ SUMMARY_CSV = DATA_DIR / "market_history.csv"
 LATEST_JSON = DATA_DIR / "latest_report.json"
 LATEST_TEXT = DATA_DIR / "latest_report.txt"
 LOG_FILE = DATA_DIR / "market_daily.log"
+YFINANCE_CACHE_DIR = DATA_DIR / "yfinance_cache"
 
 MA_DAYS = int(os.getenv("MA_DAYS", "120"))
 FETCH_PERIOD = os.getenv("FETCH_PERIOD", "1y")
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
-
-# Gmail SMTP settings. Password must be a Google App Password, not the normal
-# Google Account password.
-DEFAULT_EMAIL_TO = "ab123ab456g@gmail.com"
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
-SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "").replace(" ", "").strip()
-EMAIL_TO_RAW = os.getenv("EMAIL_TO", "").strip() or DEFAULT_EMAIL_TO
-EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "每日市場半年線").strip()
 
 MARKETS = {
     "^GSPC": "S&P 500",
@@ -89,21 +79,23 @@ class MarketResult:
     cross_signal: str
 
 
-def env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on", "y"}
-
-
-EMAIL_ENABLED = env_bool("EMAIL_ENABLED", True)
-EMAIL_SEND_ONLY_WHEN_NEW = env_bool("EMAIL_SEND_ONLY_WHEN_NEW", True)
-EMAIL_ATTACH_CSV = env_bool("EMAIL_ATTACH_CSV", True)
-EMAIL_ATTACH_JSON = env_bool("EMAIL_ATTACH_JSON", True)
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def setup_logging() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    YFINANCE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Avoid multiple worker threads racing to create yfinance's default cache.
+    try:
+        yf.set_tz_cache_location(str(YFINANCE_CACHE_DIR))
+    except Exception as exc:  # noqa: BLE001
+        logging.debug("無法設定 yfinance 時區快取: %s", exc)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(threadName)s] %(levelname)s %(message)s",
@@ -202,20 +194,25 @@ def fetch_market(symbol: str, name: str) -> MarketResult:
                 position=position,
                 cross_signal=cross,
             )
-        except Exception as exc:  # noqa: BLE001 - retry boundary
+        except Exception as exc:  # noqa: BLE001
             last_error = exc
             logging.warning("%s 下載失敗: %s", symbol, exc)
             if attempt < MAX_RETRIES:
                 time.sleep(attempt * 5)
 
-    raise RuntimeError("%s 連續失敗 %d 次: %s" % (symbol, MAX_RETRIES, last_error))
+    raise RuntimeError(
+        "%s 連續失敗 %d 次: %s" % (symbol, MAX_RETRIES, last_error)
+    )
 
 
 def fetch_all_markets() -> tuple[list[MarketResult], list[str]]:
     results: list[MarketResult] = []
     errors: list[str] = []
 
-    with ThreadPoolExecutor(max_workers=len(MARKETS), thread_name_prefix="market") as pool:
+    with ThreadPoolExecutor(
+        max_workers=len(MARKETS),
+        thread_name_prefix="market",
+    ) as pool:
         futures = {
             pool.submit(fetch_market, symbol, name): (symbol, name)
             for symbol, name in MARKETS.items()
@@ -225,7 +222,7 @@ def fetch_all_markets() -> tuple[list[MarketResult], list[str]]:
             symbol, name = futures[future]
             try:
                 results.append(future.result())
-            except Exception as exc:  # noqa: BLE001 - aggregate failures
+            except Exception as exc:  # noqa: BLE001
                 message = "%s (%s): %s" % (name, symbol, exc)
                 logging.error(message)
                 errors.append(message)
@@ -272,7 +269,10 @@ def append_history(results: Iterable[MarketResult]) -> int:
     return len(rows)
 
 
-def build_report_text(results: list[MarketResult], errors: list[str]) -> str:
+def build_report_text(
+    results: list[MarketResult],
+    errors: list[str],
+) -> str:
     generated_at = datetime.now(TAIPEI_TZ).isoformat(timespec="seconds")
     lines = [
         "每日市場半年線報告",
@@ -290,7 +290,8 @@ def build_report_text(results: list[MarketResult], errors: list[str]) -> str:
                 "  開盤：%.2f" % result.open,
                 "  收盤：%.2f" % result.close,
                 "  半年線：%.2f" % result.ma120,
-                "  差距：%s%.2f 點 (%s%.3f%%)" % (
+                "  差距：%s%.2f 點 (%s%.3f%%)"
+                % (
                     sign,
                     result.difference_points,
                     sign,
@@ -305,19 +306,17 @@ def build_report_text(results: list[MarketResult], errors: list[str]) -> str:
         lines.append("錯誤：")
         lines.extend("  - " + error for error in errors)
 
-    if not results and not errors:
-        lines.append("本次沒有市場資料。")
-
     return "\n".join(lines)
 
 
 def write_latest_files(
     results: list[MarketResult],
     errors: list[str],
-    report_text: str,
-) -> None:
+) -> str:
     payload = {
-        "generated_at_taipei": datetime.now(TAIPEI_TZ).isoformat(timespec="seconds"),
+        "generated_at_taipei": datetime.now(TAIPEI_TZ).isoformat(
+            timespec="seconds"
+        ),
         "moving_average_days": MA_DAYS,
         "results": [asdict(result) for result in results],
         "errors": errors,
@@ -326,88 +325,102 @@ def write_latest_files(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+    report_text = build_report_text(results, errors)
     LATEST_TEXT.write_text(report_text, encoding="utf-8")
     print(report_text)
+    return report_text
 
 
-def parse_recipients(raw: str) -> list[str]:
-    recipients = [item.strip() for item in raw.replace(";", ",").split(",")]
-    return [item for item in recipients if item]
+def email_subject(results: list[MarketResult]) -> str:
+    dates = sorted({item.market_date for item in results})
+    date_label = dates[-1] if dates else datetime.now(TAIPEI_TZ).date().isoformat()
+    signals = [
+        item.name + " " + item.cross_signal
+        for item in results
+        if item.cross_signal != "無穿越"
+    ]
+    signal_suffix = "｜" + "、".join(signals) if signals else ""
+    return "市場半年線報告 %s%s" % (date_label, signal_suffix)
 
 
-def build_email_subject(results: list[MarketResult], errors: list[str]) -> str:
-    dates = sorted({result.market_date for result in results})
-    date_text = dates[-1] if dates else datetime.now(TAIPEI_TZ).date().isoformat()
-
-    if errors and not results:
-        status = "抓取失敗"
-    elif errors:
-        status = "部分成功"
-    elif any(result.cross_signal != "無穿越" for result in results):
-        status = "出現半年線穿越"
-    else:
-        status = "每日更新"
-
-    return "[%s] 市場半年線報告｜%s" % (status, date_text)
-
-
-def attach_file(message: EmailMessage, path: Path, subtype: str) -> None:
+def attach_file(message: EmailMessage, path: Path) -> None:
     if not path.exists():
         return
-    message.add_attachment(
-        path.read_bytes(),
-        maintype="application" if subtype == "json" else "text",
-        subtype=subtype,
-        filename=path.name,
-    )
 
+    suffix = path.suffix.lower()
+    subtype = {
+        ".csv": "csv",
+        ".json": "json",
+        ".txt": "plain",
+        ".log": "plain",
+    }.get(suffix, "octet-stream")
+    maintype = "text" if suffix in {".csv", ".json", ".txt", ".log"} else "application"
 
-def send_email_report(
-    results: list[MarketResult],
-    errors: list[str],
-    report_text: str,
-) -> bool:
-    if not EMAIL_ENABLED:
-        logging.info("EMAIL_ENABLED=false，略過寄信")
-        return False
-
-    recipients = parse_recipients(EMAIL_TO_RAW)
-    if not recipients:
-        logging.warning("沒有設定 EMAIL_TO，略過寄信")
-        return False
-
-    if not SMTP_USERNAME or not SMTP_APP_PASSWORD:
-        logging.warning(
-            "未設定 SMTP_USERNAME 或 SMTP_APP_PASSWORD，報告已產生但不寄信"
+    if maintype == "text":
+        content = path.read_text(encoding="utf-8-sig", errors="replace")
+        message.add_attachment(
+            content,
+            subtype=subtype,
+            filename=path.name,
         )
-        return False
+    else:
+        message.add_attachment(
+            path.read_bytes(),
+            maintype=maintype,
+            subtype=subtype,
+            filename=path.name,
+        )
+
+
+def send_email(report_text: str, results: list[MarketResult]) -> None:
+    username = os.getenv("SMTP_USERNAME", "").strip()
+    app_password = os.getenv("SMTP_APP_PASSWORD", "").replace(" ", "").strip()
+    recipients_raw = os.getenv("EMAIL_TO", username).strip()
+    recipients = [
+        item.strip()
+        for item in recipients_raw.replace(";", ",").split(",")
+        if item.strip()
+    ]
+
+    if not username:
+        raise RuntimeError("未設定 SMTP_USERNAME")
+    if not app_password:
+        raise RuntimeError("未設定 SMTP_APP_PASSWORD")
+    if not recipients:
+        raise RuntimeError("未設定 EMAIL_TO")
+
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "465"))
 
     message = EmailMessage()
-    message["Subject"] = build_email_subject(results, errors)
-    message["From"] = "%s <%s>" % (EMAIL_FROM_NAME, SMTP_USERNAME)
+    message["From"] = username
     message["To"] = ", ".join(recipients)
-    message.set_content(report_text, subtype="plain", charset="utf-8")
+    message["Subject"] = email_subject(results)
+    message.set_content(report_text)
 
-    if EMAIL_ATTACH_CSV:
-        attach_file(message, SUMMARY_CSV, "csv")
-    if EMAIL_ATTACH_JSON:
-        attach_file(message, LATEST_JSON, "json")
+    attach_file(message, LATEST_TEXT)
+    attach_file(message, LATEST_JSON)
+    attach_file(message, SUMMARY_CSV)
 
     context = ssl.create_default_context()
-    try:
-        with smtplib.SMTP_SSL(
-            SMTP_HOST,
-            SMTP_PORT,
-            context=context,
-            timeout=30,
-        ) as server:
-            server.login(SMTP_USERNAME, SMTP_APP_PASSWORD)
-            server.send_message(message)
-        logging.info("市場報告已寄送到 %s", ", ".join(recipients))
-        return True
-    except Exception:  # noqa: BLE001 - email boundary
-        logging.exception("寄送市場報告失敗")
-        return False
+    logging.info(
+        "準備透過 %s:%d 寄信到 %s",
+        smtp_host,
+        smtp_port,
+        ", ".join(recipients),
+    )
+
+    with smtplib.SMTP_SSL(
+        smtp_host,
+        smtp_port,
+        context=context,
+        timeout=30,
+    ) as server:
+        server.login(username, app_password)
+        server.send_message(message)
+
+    logging.info("Email 寄送成功：%s", ", ".join(recipients))
 
 
 def main() -> int:
@@ -415,25 +428,36 @@ def main() -> int:
     logging.info("每日市場任務開始，半年線=%d 日", MA_DAYS)
 
     results, errors = fetch_all_markets()
-    added_count = append_history(results) if results else 0
-    report_text = build_report_text(results, errors)
-    write_latest_files(results, errors, report_text)
-
-    should_send = (
-        not EMAIL_SEND_ONLY_WHEN_NEW
-        or added_count > 0
-        or bool(errors)
-    )
-    if should_send:
-        send_email_report(results, errors, report_text)
-    else:
-        logging.info("沒有新交易日資料且沒有錯誤，本次不重複寄信")
-
     if not results:
         logging.error("三個市場全部抓取失敗")
+        write_latest_files([], errors)
         return 1
+
+    new_rows = append_history(results)
+    report_text = write_latest_files(results, errors)
+
+    if env_bool("EMAIL_ENABLED", default=False):
+        send_only_when_new = env_bool(
+            "EMAIL_SEND_ONLY_WHEN_NEW",
+            default=True,
+        )
+        if send_only_when_new and new_rows == 0:
+            logging.info("沒有新交易資料，依設定跳過 Email")
+        else:
+            try:
+                send_email(report_text, results)
+            except Exception as exc:  # noqa: BLE001
+                logging.exception("Email 寄送失敗: %s", exc)
+                return 3
+    else:
+        logging.info("EMAIL_ENABLED=false，跳過 Email")
+
     if errors:
-        logging.warning("任務部分成功：成功 %d，失敗 %d", len(results), len(errors))
+        logging.warning(
+            "任務部分成功：成功 %d，失敗 %d",
+            len(results),
+            len(errors),
+        )
         return 2
 
     logging.info("任務完成：成功 %d", len(results))

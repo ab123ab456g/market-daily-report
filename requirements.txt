@@ -1,2 +1,2 @@
-yfinance>=0.2.66,<2
+yfinance[repair]>=0.2.66,<2
 pandas>=2.2,<3

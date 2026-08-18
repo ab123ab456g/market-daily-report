@@ -138,3 +138,11 @@
 2026-08-18 06:51:11,549 [MainThread] INFO 準備透過 smtp.gmail.com:465 寄信到 ab123ab456g@gmail.com
 2026-08-18 06:51:13,409 [MainThread] INFO Email 寄送成功：ab123ab456g@gmail.com
 2026-08-18 06:51:13,410 [MainThread] INFO 任務完成：成功 3
+2026-08-19 06:51:26,647 [MainThread] INFO 每日市場任務開始，半年線=120 日
+2026-08-19 06:51:26,648 [market_0] INFO 下載 S&P 500 (^GSPC)，第 1 次
+2026-08-19 06:51:26,648 [market_1] INFO 下載 NASDAQ Composite (^IXIC)，第 1 次
+2026-08-19 06:51:26,649 [market_2] INFO 下載 Taiwan Weighted Index (^TWII)，第 1 次
+2026-08-19 06:51:29,054 [MainThread] INFO 新增 3 筆資料到 /home/runner/work/market-daily-report/market-daily-report/data/market_history.csv
+2026-08-19 06:51:29,153 [MainThread] INFO 準備透過 smtp.gmail.com:465 寄信到 ab123ab456g@gmail.com
+2026-08-19 06:51:31,581 [MainThread] INFO Email 寄送成功：ab123ab456g@gmail.com
+2026-08-19 06:51:31,583 [MainThread] INFO 任務完成：成功 3

@@ -224,3 +224,10 @@
 2026-08-29 11:48:26,829 [MainThread] INFO 準備透過 smtp.gmail.com:465 寄信到 ab123ab456g@gmail.com
 2026-08-29 11:48:28,779 [MainThread] INFO Email 寄送成功：ab123ab456g@gmail.com
 2026-08-29 11:48:28,780 [MainThread] INFO 任務完成：成功 3
+2026-08-30 08:33:53,311 [MainThread] INFO 每日市場任務開始，半年線=120 日
+2026-08-30 08:33:53,312 [market_0] INFO 下載 S&P 500 (^GSPC)，第 1 次
+2026-08-30 08:33:53,312 [market_1] INFO 下載 NASDAQ Composite (^IXIC)，第 1 次
+2026-08-30 08:33:53,313 [market_2] INFO 下載 Taiwan Weighted Index (^TWII)，第 1 次
+2026-08-30 08:33:55,447 [MainThread] INFO 沒有新的交易日資料需要寫入 CSV
+2026-08-30 08:33:55,448 [MainThread] INFO 沒有新交易資料，依設定跳過 Email
+2026-08-30 08:33:55,448 [MainThread] INFO 任務完成：成功 3

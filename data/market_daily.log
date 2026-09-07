@@ -285,3 +285,10 @@
 2026-09-06 08:07:51,012 [MainThread] INFO 沒有新的交易日資料需要寫入 CSV
 2026-09-06 08:07:51,015 [MainThread] INFO 沒有新交易資料，依設定跳過 Email
 2026-09-06 08:07:51,015 [MainThread] INFO 任務完成：成功 3
+2026-09-07 08:11:58,061 [MainThread] INFO 每日市場任務開始，半年線=120 日
+2026-09-07 08:11:58,061 [market_0] INFO 下載 S&P 500 (^GSPC)，第 1 次
+2026-09-07 08:11:58,062 [market_1] INFO 下載 NASDAQ Composite (^IXIC)，第 1 次
+2026-09-07 08:11:58,063 [market_2] INFO 下載 Taiwan Weighted Index (^TWII)，第 1 次
+2026-09-07 08:11:59,810 [MainThread] INFO 沒有新的交易日資料需要寫入 CSV
+2026-09-07 08:11:59,810 [MainThread] INFO 沒有新交易資料，依設定跳過 Email
+2026-09-07 08:11:59,810 [MainThread] INFO 任務完成：成功 3

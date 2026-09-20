@@ -1,9 +1,9 @@
 {
-  "generated_at_taipei": "2026-09-19T08:30:06+08:00",
+  "generated_at_taipei": "2026-09-20T08:16:13+08:00",
   "moving_average_days": 120,
   "results": [
     {
-      "run_time_taipei": "2026-09-19T08:30:04+08:00",
+      "run_time_taipei": "2026-09-20T08:16:12+08:00",
       "market_date": "2026-09-18",
       "symbol": "^GSPC",
       "name": "S&P 500",
@@ -16,28 +16,28 @@
       "cross_signal": "無穿越"
     },
     {
-      "run_time_taipei": "2026-09-19T08:30:04+08:00",
+      "run_time_taipei": "2026-09-20T08:16:12+08:00",
       "market_date": "2026-09-18",
       "symbol": "^IXIC",
       "name": "NASDAQ Composite",
       "open": 26522.09,
       "close": 26522.54,
       "ma120": 25581.33,
-      "difference_points": 941.22,
+      "difference_points": 941.21,
       "difference_percent": 3.679,
       "position": "半年線之上",
       "cross_signal": "無穿越"
     },
     {
-      "run_time_taipei": "2026-09-19T08:30:06+08:00",
+      "run_time_taipei": "2026-09-20T08:16:13+08:00",
       "market_date": "2026-09-18",
       "symbol": "^TWII",
       "name": "Taiwan Weighted Index",
       "open": 46449.56,
-      "close": 47122.18,
-      "ma120": 43030.05,
-      "difference_points": 4092.13,
-      "difference_percent": 9.51,
+      "close": 47180.75,
+      "ma120": 43030.54,
+      "difference_points": 4150.21,
+      "difference_percent": 9.645,
       "position": "半年線之上",
       "cross_signal": "無穿越"
     }
